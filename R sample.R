@@ -1,11 +1,10 @@
 ## 1-cross sectional data
 ## Topic: The Academic Performance of Rural Left-behind Children and Its Influencing Factors—Evidence from Henan Province of China
-## Editor: Siqi Li
 
 # Merge data sets and keep the data of Henan province in 2017
 install.packages("haven")
 library(haven)
-School_2017 <- read_dta("D:/lsq/CCAP_CAU_student/surveydata/append/raw/school2017.dta")
+School_2017 <- read_dta("D:/surveydata/append/raw/school2017.dta")
 View(School_2017)
 School_2017$id <- as.numeric(School_2017$id)
 library("dplyr")
@@ -13,7 +12,7 @@ School_2017 <- School_2017 %>% rename("school1" = "id")
 School_2017 <- subset(School_2017, select = c(school1,s1_c,s4_c,s5,s7_c,s9_c,s13_c,s11_c,s19,s20,s23_c))
 save(School_2017, file = "School_2017.Rda")  
 
-Df_fi <- read_dta("D:/lsq/CCAP_CAU_student/surveydata/append/dtanew/FINAL.dta")
+Df_fi <- read_dta("D:/surveydata/append/dtanew/FINAL.dta")
 Df_fi <- Df_fi[Df_fi$year == 2017,]
 Df_fi$id <- as.character(Df_fi$id)
 Df_fi$school1 <- substr(Df_fi$id, 1, 4) 
@@ -239,7 +238,6 @@ summary(model_2_rmm) # robust 2sls result only based on girls' data
 
 ## 2-time series data
 ## Topic: Fit Hamilton’s switching regime model of real home prices from 1953-2021
-## Editor: Siqi Li
 
 library(readxl)
 realhomeprices <- read_excel("C:/Users/lenovo/Downloads/realhomeprices.xls")

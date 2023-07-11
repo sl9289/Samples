@@ -1,135 +1,7 @@
-// 1.Topic: The Value-at-Risk of Japanese Yen Exchange Rate Volatility Based on The EGARCH Model 
-
-** test for stationary 
-use "D:\lsq\nyu\time seires\paper_raw.dta",clear
-tsline d_ler
-dfuller ler, lag(1)
-pperron ler ,regress //test stationary of ler-nonstationary
-dfgls d_ler, maxlag(12)
-pperron d_ler ,regress //test stationary of d_ler-stationary
-
-** test for conditional heteroskedasticity
-arima d_ler, arima(1,0,0) nolog
-predict e_hat,resid 
-reg e_hat
-estat archlm
-gen e2=e_hat*e_hat
-wntestq e2
-
-** skewness, kurtosis
-sktest d_ler //not normal dis
-sum d_ler, detail //skewness=-0.467; kurtosis=4.185-left fat tail
-
-**graph
-twoway(tsline ler, yaxis(1)) (tsline d_ler, yaxis(2))
-
-** mean equation(AR1+x)
-ac d_ler //(AR1)
-pac d_ler 
-arima d_ler, arima(1,0,0) nolog //best
-estat ic
-arima d_ler, arima(1,0,1) nolog
-estat ic
-drop time_c
-save "D:\lsq\nyu\time seires\paper_exchange rate.dta"
-
-**add interest rate: 10-year interest rate
-use "D:\lsq\nyu\time seires\paper_interest rate1.dta",clear
-gen time = date( var1,"YMD")
-format time %tddmy
-tsset time
-sort us_interest time
-sort jp_interest time
-gen in_dif=us_interest- jp_interest
-gen time_c = _n
-tsset time_c
-gen d_in_dif = d.in_dif
-merge 1:1 time using "D:\lsq\nyu\time seires\paper_exchange rate.dta"
-keep if _merge==3
-drop _merge time_c
-gen time_c = _n
-tsset time_c
-save "D:\lsq\nyu\time seires\paper_final.dta"
-
-** select p q and error distribution of EGARCH+GARCH
-arch ler,het(in_dif) arima(1,1,0) arch(1) egarch(1) nolog 
-est store egarchn
-arch d_ler,het(in_dif) arima(1,0,0) arch(1) egarch(1) distribution(t) //better
-est store egarcht
-esttab egarchn egarcht, mtitle scalar(ll aic bic)
-
-**VAR-causality effect
-use "D:\lsq\nyu\time seires\paper_final.dta",clear
-replace d_in_dif=0 if d_in_dif==.
-tsline in_dif
-dfgls in_dif, maxlag(12) //nonstarionary
-pperron in_dif ,regress //test stationary of interest rate
-dfgls d_in_dif, maxlag(12) //starionary
-pperron d_in_dif ,regress //test stationary of d_interest rate
-
-**test for cointegration
-vecrank ler in_dif //johansen test
-reg ler in_dif
-predict e_hat,resid
-dfuller e_hat
-ssc install egranger
-egranger in_dif ler 
-egranger ler in_dif //not cointegrated
-
-** short term relationship
-varsoc d_ler d_in_dif 
-var d_ler d_in_dif, lag(3)
-vargranger // cause-add this term in grach 
-
-**SVAR
-matrix A1 = (1,0 \ .,1)
-matrix B1 = (.,0 \ 0,.)
-matrix list A1
-matrix list B1
-svar d_in_dif d_ler, lags(1/2) aeq(A1) beq(B1) 
-matrix Aest=e(A)
-matrix Best=e(B)
-matrix chol_var=inv(Aest)*Best
-matrix list chol_var //1 unit change in the interest rate differential causes 0.87% change in the exchange rate
-  
-**VAR to forecast d_in
-use "D:\lsq\nyu\time seires\paper_final.dta",clear
-var d_ler d_in_dif, lag(1/2)
-varfcast compute, dynamic(398) step(10)
-keep time time_c d_in_dif_f
-rename d_in_dif_f d_in_dif
-keep if time==.
-save "D:\lsq\nyu\time seires\paper_var.dta"
-
-use "D:\lsq\nyu\time seires\paper_final.dta",clear
-append using "D:\lsq\nyu\time seires\paper_var.dta",force
-save "D:\lsq\nyu\time seires\paper_finalver.dta"
-
-**predict(arch d_ler, arima(1,0,0) arch(1) egarch(1) )
-use "D:\lsq\nyu\time seires\paper_finalver.dta", clear
-arch d_ler, arima(1,0,0) arch(1) egarch(1) 
-predict ht2, variance dynamic(398) //ht
-
-**model check
-arch d_ler,het(in_dif) arima(1,0,0) arch(1) egarch(1) distribution(t)
-predict new, y dynamic(410)
-
-**calculate VaR 
-gen VaR_up2=1.65*sqrt(ht2)
-gen VaR_down2=-1.65*sqrt(ht2)
-tsline VaR_up VaR_down d_ler f_d_ler, xline(300)
-
-**forecast
-forecast create garch
-estimates store fd_ler
-forecast estimates fd_ler
-forecast solve, begin(398) prefix(_f)
-gen fd_ler=_fd_ler if time_c>=300
-
-// 2.Topic: Raw survey data cleaning
+// 1.Topic: Raw survey data cleaning
 
 **check & revise student ID numbers
-use "D:\lsq\CCAP_CAU_student\raw\student.dta",clear
+use "D:\raw\student.dta",clear
 replace c13_c=c13
 replace c13_c="a" if c13=="密"
 replace c13_c="." if c13!=""&c13!="1"&c13!="2"&c13!="a"&c13!="b"
@@ -209,9 +81,9 @@ replace id=21073546 if name=="乔志琪"
 replace id=35114118 if name=="朱秀秀"
 replace id=35413116 if name=="周毅然"
 drop if id==.
-save "D:\lsq\CCAP_CAU_student\dtadta\studentscore.dta", replace
+save "D:\dtadta\studentscore.dta", replace
 
-use "D:\lsq\CCAP_CAU_student\raw\student2018_v2.dta",clear
+use "D:\raw\student2018_v2.dta",clear
 replace id = subinstr(id, "A"，"", .)
 replace id = subinstr(id, "B"，"", .)
 replace id = subinstr(id, "大"，"", .)
@@ -292,10 +164,10 @@ replace id=35413116 if name=="周毅然"
 drop if id==.
 merge 1:1 id using "D:\lsq\CCAP_CAU_student\dta\studentscore-1.dta",force
 drop _merge
-save "D:\lsq\CCAP_CAU_student\dta\student-2.dta",replace
+save "D:\dta\student-2.dta",replace
 
 ** calculate students' TMISS scores 
-use "D:\lsq\CCAP_CAU_student\dta\studentscore.dta",clear
+use "D:\dta\studentscore.dta",clear
 keep if filegrade==6 //calculate scores for 6th graders
 g chinesescore=0
 foreach x of varlist c1_c c2_c c3_c c4_c c5_c c6_c c7_c c8_c c9_c c24_c c25_c c26_c c27_c c41_c{
@@ -333,9 +205,7 @@ foreach x of varlist m11_c m17_c m19_c m30_c {
 replace  mathscore=mathscore+1 if `x'=="d"
 }
 replace  mathscore=mathscore+1 if m5_c=="e"
-save "D:\lsq\CCAP_CAU_student\调研数据append\调研数据append\dta\studentscore6.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\调研数据append\调研数据append\dta\studentscore.dta",clear
 drop if filegrade==6 //calculate scores for 5th graders
 g chinesescore=0
 foreach x of varlist c1_c c2_c c3_c c4_c c5_c c6_c c7_c c8_c c9_c c10_c c12_c c13_c c27_c c28_c c29_c c30_c c31_c c45_c {
@@ -373,7 +243,7 @@ foreach x of varlist m7_c m9_c m17_c {
 replace  mathscore=mathscore+1 if `x'=="d"
 }
 replace  mathscore=mathscore+1 if m18_c=="e"
-append using "D:\lsq\CCAP_CAU_student\dta\studentscore6.dta" //append scores of two grades
+append using "D:\dta\studentscore6.dta" //append scores of two grades
 
 **calculate the Big Five personalities scores
 forval i=63(1)76 {
@@ -457,10 +327,10 @@ g s115_c1=6-s115_c
 g s120_c1=s120_c
 g sdv1=(s115_c1+s120_c1)/2
 keep id province filegrade county town school grade class mainteacher mathscore chinesescore esteem1 grit1 depress1 dep1 sde1 sdn1 sdo1 sdg1 sdv1
-save "D:\lsq\CCAP_CAU_student\dta\studentscore-1.dta",replace
+save "D:\dta\studentscore-1.dta",replace
 
 **clean student tables in 2017 and 2018
-use "D:\lsq\CCAP_CAU_student\raw\student-1(2017).dta", clear
+use "D:\raw\student-1(2017).dta", clear
 rename s1 g1 
 decode s1_c,gen(s1_c1)
 replace s1_c1="1" if s1_c1=="男"
@@ -588,9 +458,9 @@ replace g7_c2=6 if g7_c=="2,3,4,5,1"|g7_c=="2,3,4,5,6"
 replace g7_c2=7 if g7_c=="4,2,3,5,6,7"
 keep id pro name height weight county town grade mainteacher mathscore esteem1 grit1 dep1 depress1 sde1 sdn1 sdo1 sdg1 sdv1 g1 g1_c g2 g2_c g3 g3_c g4 g4_c g5 g5_c g6a g6b g6c g7 g7_c g7_c2 g8 g8_c g9 g9_c g10 g10_c g11 g11_c g12 g12_c g13 g13_c g14 g14_c g15 g15_c g16 g16_c g17 g17_c g18 g18_c g19 g19_c g20 g20_c g21 g21_c g22 g22_c g23 g23_c g24 g24a g25 g26 g26_c g26a g26a_c g27 g27_c g28 g28_c g29 g29_c g30 g30_c g31 g32 g33 g33_c g34 g34_c g35 g35_c g36 g36_c g37 g37_c g38 g38_c g39 g39_c g40 g40_c g41 g41_c g42 g42_c g43 g43_c g44 g44_c g45 g45_c g46 g46_c g47 g47_c g48 g48_c g49 g49_c g50_c g51_c  
 g year=2017
-save "D:\lsq\CCAP_CAU_student\dtanew\student1.dta",replace
+save "D:\dtanew\student1.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dta\student-2.dta", clear
+use "D:\dta\student-2.dta", clear
 drop height
 destring height_c, gen(height) force
 
@@ -983,10 +853,10 @@ rename s43_c g33_c
 rename province pro 
 keep id pro name height weight county town grade mainteacher mathscore esteem1 grit1 dep1 depress1 sde1 sdn1 sdo1 sdg1 sdv1 g1 g1_c g2 g2_c g3 g3_c g4 g4_c g5 g5_c g6a g6b g6c g7 g7_c g7_c2 g8 g8_c g9 g9_c g10 g10_c g11 g11_c g12 g12_c g13 g13_c g14 g14_c g15 g15_c g16 g16_c g17 g17_c g18 g18_c g19 g19_c g20 g20_c g21 g21_c g22 g22_c g23 g23_c g24 g24a g25 g26 g26_c g26a g26a_c g27 g27_c g28 g28_c g29 g29_c g30 g30_c g31 g32 g33 g33_c g34 g34_c g35 g35_c g36 g36_c g37 g37_c g38 g38_c g39 g39_c g40 g40_c g41 g41_c g42 g42_c g43 g43_c g44 g44_c g45 g45_c g46 g46_c g47 g47_c g48 g48_c g49 g49_c 
 g year=2018
-save "D:\lsq\CCAP_CAU_student\dtanew\student2(1).dta",replace
+save "D:\dtanew\student2(1).dta",replace
 
 **merge final student table with parent table after cleaning
-import excel "D:\lsq\CCAP_CAU_student\raw\家长表-2018.xlsx", firstrow clear
+import excel "D:\raw\家长表-2018.xlsx", firstrow clear
 rename 问卷编码 id 
 rename 学生姓名 name
 rename 年级 grade
@@ -1077,19 +947,19 @@ gen g51_c=1 if g51=="1"|g51=="√"|g51=="2"|g51=="3"|g51=="4"|g51=="5"|g51=="6"|
 replace g51_c=0 if g51=="0"|g51=="2"|g51=="1"
 keep id g50_c g51_c
 
-merge 1:1 id using"D:\lsq\CCAP_CAU_student\dtanew\student2(1).dta",force
+merge 1:1 id using"D:\dtanew\student2(1).dta",force
 drop if _merge==1
 drop _merge
-save "D:\lsq\CCAP_CAU_student\dtanew\student2.dta",replace
+save "D:\dtanew\student2.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\student1.dta",clear
-append using "D:\lsq\CCAP_CAU_student\dtanew\student2.dta",force
+use "D:\dtanew\student1.dta",clear
+append using "D:\dtanew\student2.dta",force
 sort id year
 order id year
-save "D:\lsq\CCAP_CAU_student\dtanew\final.dta",replace
+save "D:\dtanew\final.dta",replace
 
 **clean school table
-import excel "D:\lsq\CCAP_CAU_student\学校表1.xlsx", firstrow clear
+import excel "D:\学校表1.xlsx", firstrow clear
 rename 省市 pro
 rename 问卷编码 id
 replace id="4261" if id=="42615"| id=="42616"
@@ -1199,9 +1069,9 @@ rename 学生在食堂吃晚餐的伙食费每学期是多少钱元学期 s29
 drop year
 gen year=2018
 keep id year school s1 s1_c s3 s4 s4_c s5 s7 s7_c s9 s9_c s11 s11_c s13 s13_c s18 s19 s20 s21 s22 s22_c s22a s23 s23_c
-save "D:\lsq\CCAP_CAU_student\dtanew\school(2018).dta", replace
+save "D:\dtanew\school(2018).dta", replace
 
-use"D:\lsq\CCAP_CAU_student\raw\school2017.dta",clear //append with 2017 school data
+use"D:\raw\school2017.dta",clear //append with 2017 school data
 replace s1="2002" if s1=="2002年8月"
 destring s1, replace
 drop year
@@ -1215,10 +1085,10 @@ gen s9_t=s9_c/s5
 gen s11_t=s11_c/s5
 gen s13_t=s13_c/s5
 gen school1=id
-save "D:\lsq\CCAP_CAU_student\dtanew\school.dta", replace
+save "D:\dtanew\school.dta", replace
 
 **check teachers' information
-import excel "D:\lsq\CCAP_CAU_student\raw\老师表-2018.xlsx", firstrow clear
+import excel "D:\raw\老师表-2018.xlsx", firstrow clear
 rename 问卷编码 id
 replace id = subinstr(id, "-1","", .)
 replace id = subinstr(id, "-2","", .)
@@ -1340,10 +1210,10 @@ ssc install catenate
 gen id_school=substr(id,1,5)
 drop if class==.
 catenate id_class = id_school class, p(no)
-save "D:\lsq\CCAP_CAU_student\dtanew\chitea.dta", replace
+save "D:\dtanew\chitea.dta", replace
 
 **add teaching evaluation related variables
-use "D:\lsq\CCAP_CAU_student\raw\student2018_v2.dta", clear
+use "D:\raw\student2018_v2.dta", clear
 keep id name height s181 s182 s183 s184 s185 s186 s187 s188 s189 s190 s191 s192 s193 s194 s195 s196 s197 s198 s199 s200 s201 s202
 foreach x of varlist s181_c s182 s183 s184 s185 s186 s187 s188 s189 s190 s191 s192 s193 s194 s195 s196 {
 gen `x'_c="1" if `x'=="1"
@@ -1572,28 +1442,28 @@ drop if id==.
 
 tostring id, gen(idn) 
 gen id_class=substr(idn,1,6)
-merge n:n id_class using "D:\lsq\CCAP_CAU_student\dtanew\chitea.dta",force
+merge n:n id_class using "D:\dtanew\chitea.dta",force
 keep if _merge==3
 drop _merge
 drop id_class id_school class height
 gen year=2018
 order year,after(idn)
-save "D:\lsq\CCAP_CAU_student\dtanew\chinesetea.dta",replace
+save "D:\dtanew\chinesetea.dta",replace
 
 **clean seat location table
-use "D:\lsq\CCAP_CAU_student\raw\teacher.dta", clear
+use "D:\raw\teacher.dta", clear
 gen id1=substr(id_c,6,1)
 drop if id1=="m"
 gen id_school=substr(id_c,1,5)
 ssc install catenate
 catenate id_class = id_school class, p(no)
 keep id_class t22 t22_c t21 t21_c
-save "D:\lsq\CCAP_CAU_student\dtanew\teacher_b.dta", replace
+save "D:\dtanew\teacher_b.dta", replace
 
-use "D:\lsq\CCAP_CAU_student\raw\student-1(2017).dta", clear
+use "D:\raw\student-1(2017).dta", clear
 tostring id, gen(idn)
 gen id_class=substr(idn,1,6)
-merge n:n id_class using"D:\lsq\CCAP_CAU_student\dtanew\teacher_b.dta"
+merge n:n id_class using"D:\dtanew\teacher_b.dta"
 drop if _merge==2
 drop _merge
 
@@ -2124,10 +1994,10 @@ order s63_c, after(s63)
 order s63_c1,after(s63_c)
 
 keep id s62 s62_c s62_c1 s63 s63_c s63_c1
-save "D:\lsq\CCAP_CAU_student\dtanew\location_2017.dta"
+save "D:\dtanew\location_2017.dta"
 
 **check and revise the peer's ID number
-use "D:\lsq\CCAP_CAU_student\dtanew\final.dta", clear
+use "D:\dtanew\final.dta", clear
 keep id year mainteacher name g32 g33
 keep if year==2018
  
@@ -2704,27 +2574,27 @@ replace g33="33114173" if g33=="331141703"
 destring g33, gen(g33_c) force
 recast long g33_c
 g g33_c1=strpos(g33,",")!=0 //all have only one best friend√
-save "D:\lsq\CCAP_CAU_student\dtanew\peerid(2018).dta",replace
+save "D:\dtanew\peerid(2018).dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\final.dta",clear //substitute the peer ID into the final data set
+use "D:\dtanew\final.dta",clear //substitute the peer ID into the final data set
 keep if year==2018 
 drop g33_c
-merge 1:1 id using "D:\lsq\CCAP_CAU_student\dtanew\peerid(2018).dta"
+merge 1:1 id using "D:\dtanew\peerid(2018).dta"
 drop _merge
 order g33_c, after(g33)
 order g33_c1, after(g33_c)
-save "D:\lsq\CCAP_CAU_student\dtanew\final1.dta",replace
+save "D:\dtanew\final1.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\student1.dta",clear //append two years' data sets
-append using "D:\lsq\CCAP_CAU_student\dtanew\final1.dta",force
+use "D:\dtanew\student1.dta",clear //append two years' data sets
+append using "D:\dtanew\final1.dta",force
 sort id year
 order esteem1, after(mathscore)
 order esteem2, after(esteem1)
 order grit1, after(esteem2)
-save "D:\lsq\CCAP_CAU_student\dtanew\final(new).dta",replace
+save "D:\dtanew\final(new).dta",replace
 
 **adjust the school's final scores for children
-use "D:\lsq\CCAP_CAU_student\dtanew\final(new).dta",clear
+use "D:\dtanew\final(new).dta",clear
 replace g24a = "." if g24a == "#不知"|g24a == "?" |g24a == "??" |g24a == "a" |g24a == "不" |g24a == "不太清楚" |g24a == "不明" |g24a == "大约" |g24a == "不清楚"|g24a == "不清除"|g24a == "不知"|g24a == "不知道"|g24a == "不知到"|g24a == "不记得"|g24a == "不记的"|g24a == "不识"|g24a == "大??"|g24a == "大概"|g24a == "完全不知道"|g24a == "忘"|g24a == "忘了" |g24a == "忘记"|g24a == "忘记了" |g24a == "无"|g24a == "无信息"|g24a == "无成绩"|g24a == "望了"|g24a == "未"|g24a == "没有"|g24a == "没有考"|g24a == "没考"|g24a == "秘密"|g24a == "空"|g24a == "缺"|g24a == "缺考"|g24a == "记不清"|g24a == "请假"|g24a == "不之"|g24a == "不几格"|g24a == "不积格"|g24a == "不能说"|g24a == "不记得了"|g24a == "否"|g24a == "大概考了360多分"|g24a == "完了"|g24a == "有??"|g24a == "望记"|g24a == "未考"|g24a == "语"|g24a == "15703871358 语文"|g24a == "999"                                                                                 
 replace g24a = "1.5" if g24a == "1、2"|g24a == "1,2" //adjust the Chinese score
 replace g24a = "5" if g24a == "5以下"
@@ -3020,20 +2890,16 @@ list grade if id==35313148 & year==2017
 replace grade=5 if id==35313148 & year==2018
 list grade if id==35613132 & year==2017
 replace grade=5 if id==35613132 & year==2018
-save "D:\lsq\CCAP_CAU_student\dtanew\finalS.dta",replace
 
 **merge the final student data set with the final school data set
-use "D:\lsq\CCAP_CAU_student\dtanew\finalS.dta",clear
 tostring id, gen(idn)
 gen school1=substr(idn,1,4)
 destring school1,replace
 merge m:m school1 using "D:\lsq\CCAP_CAU_student\dtanew\school.dta"
 keep if _merge==3|_merge==1
 drop idn _merge
-save "D:\lsq\CCAP_CAU_student\dtanew\stu_sch(1).dta",replace
 
 //check and make up this stu_sch data set
-use "D:\lsq\CCAP_CAU_student\dtanew\stu_sch(1).dta",clear
 keep if year==2017
 keep id  year g1_c g2_c g4_c g5_c g10_c g11_c g12_c g13_c g7_c2 g50_c g51_c s1_c
 rename g1_c g1_c_2017 
@@ -3049,9 +2915,9 @@ rename g50_c g50_c_2017
 rename g51_c g51_c_2017
 rename s1_c s1_c_2017
 rename year year2017
-save "D:\lsq\CCAP_CAU_student\stu_sch(2017).dta",replace
+save "D:\stu_sch(2017).dta",replace
 
-use "D:\lsq\CCAP_CAU_student\stu_sch(1).dta",clear
+use "D:\stu_sch(1).dta",clear
 keep if year==2018
 keep id year g1_c g2_c g4_c g5_c g10_c g11_c g12_c g13_c g7_c2 g50_c g51_c s1_c
 rename g1_c g1_c_2018 
@@ -3067,13 +2933,13 @@ rename g50_c g50_c_2018
 rename g51_c g51_c_2018
 rename s1_c s1_c_2018
 rename year year2018
-save "D:\lsq\CCAP_CAU_student\dtanew\stu_sch(2018).dta",replace
+save "D:\dtanew\stu_sch(2018).dta",replace
 
-use"D:\lsq\CCAP_CAU_student\dtanew\stu_sch(2018).dta",clear
-merge 1:1 id using "D:\lsq\CCAP_CAU_student\dtanew\stu_sch(2017).dta"
+use"D:\dtanew\stu_sch(2018).dta",clear
+merge 1:1 id using "D:\dtanew\stu_sch(2017).dta"
 keep if _merge==3
 drop _merge
-merge 1:n id using "D:\lsq\CCAP_CAU_student\dtanew\stu_sch(1).dta"
+merge 1:n id using "D:\dtanew\stu_sch(1).dta"
 drop _merge
 sort id year
 replace year=2017 if year2017==. & year2018==2018 & year==.
@@ -3103,81 +2969,77 @@ replace g50_c=g50_c_2018 if g50_c==. & year==2017
 replace s1_c=s1_c_2017 if s1_c==. & year==2018 //make up 'esta_school'
 replace s1_c=s1_c_2018 if s1_c==. & year==2017
 drop year2017 year2018 sex g1_c_2018 g2_c_2018 g4_c_2018 g5_c_2018 g10_c_2018 g11_c_2018 g12_c_2018 g13_c_2018 g50_c_2018 g51_c_2018 g7_c2_2018 s1_c_2018 g1_c_2017 g2_c_2017 g4_c_2017 g5_c_2017 g10_c_2017 g11_c_2017 g12_c_2017 g13_c_2017 g50_c_2017 g51_c_2017 g7_c2_2017 s1_c_2017
-save "D:\lsq\CCAP_CAU_student\dtanew\stu_sch.dta",replace
+save "D:\dtanew\stu_sch.dta",replace
 
 **import the appearance score, iq and location(2017) variables
-use"D:\lsq\CCAP_CAU_student\dtanew\stu_sch.dta",clear 
+use"D:\dtanew\stu_sch.dta",clear 
 keep if year==2018
 merge 1:1 id using"D:\lsq\CCAP_CAU_student\dtanew\chinesesocre(2018).dta"
 keep if _merge == 3| _merge == 1
 drop _merge
-save "D:\lsq\CCAP_CAU_student\dtanew\finalS（2018）.dta",replace 
+save "D:\dtanew\finalS（2018）.dta",replace 
 
-use"D:\lsq\CCAP_CAU_student\dtanew\stu_sch.dta",clear
+use"D:\dtanew\stu_sch.dta",clear
 keep if year==2017
-merge 1:1 id using"D:\lsq\CCAP_CAU_student\dta\data-appearance_2017.dta"
+merge 1:1 id using"D:\dta\data-appearance_2017.dta"
 keep if _merge == 3| _merge == 1
 drop _merge
-merge 1:1 id using"D:\lsq\CCAP_CAU_student\dtanew\iq_2017.dta"
+merge 1:1 id using"D:\dtanew\iq_2017.dta"
 drop _merge
-merge 1:1 id using"D:\lsq\CCAP_CAU_student\dtanew\location_2017.dta"
+merge 1:1 id using"D:\dtanew\location_2017.dta"
 drop _merge
-save "D:\lsq\CCAP_CAU_student\dtanew\finalS（2017）.dta",replace
+save "D:\dtanew\finalS（2017）.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\finalS（2017）.dta",clear 
+use "D:\dtanew\finalS（2017）.dta",clear 
 rename id peerid, replace 
 keep peerid mainteacher grade height heightnew weight weightnew mathscore esteem1 esteem2 dep1 depress1 sde1 sdn1 sdo1 sdg1 sdv1 grit1 g1 g1_c g2 g2_c g3 g3_c g4 g4_c g5 g5_c g6a g6b g6c g7 g7_c g7_c1 g8 g8_c g9 g9_c g10 g10_c g38 g38_c g39 g39_c g40 g40_c g41 g41_c g42 g42_c g43 g43_c g11 g11_c g12 g12_c g13 g13_c g14 g14_c g15 g15_c g16 g16_c g17 g17_c g18 g18_c g19 g19_c g20 g20_c g21 g21_c g22 g22_c g23 g23_c g24a g24anew g24 g24new g25 g25new g26 g26_c g26a g26a_c g27 g27_c g28 g28_c g29 g29_c g30 g30_c g31 g32 g33 g34 g34_c g35 g35_c g36 g36_c g37 g37_c g44 g44_c g45 g45_c g46 g46_c g47 g47_c g48 g48_c g49 g49_c face_m face_f g50_c g51_c g7_c2 school s1 s1_c s3 s4 s4_c s5 s7 s7_c s9 s9_c s11 s11_c s13 s13_c s18 s19 s20 s21 s22 s22_c s22a s23 s23_c iqrwscore s62 s62_c s62_c1 s63 s63_c s63_c1 
 foreach v of varlist _all {
 rename `v' P`v'
 }
 rename Ppeerid peerid, replace
-save "D:\lsq\CCAP_CAU_student\dtanew\PfinalS（2017）.dta",replace 
+save "D:\dtanew\PfinalS（2017）.dta",replace 
 
-use "D:\lsq\CCAP_CAU_student\dtanew\finalS（2017）.dta",clear
+use "D:\dtanew\finalS（2017）.dta",clear
 rename g33_c peerid, replace
-merge m:1 peerid using "D:\lsq\CCAP_CAU_student\dtanew\PfinalS（2017）.dta"
+merge m:1 peerid using "D:\dtanew\PfinalS（2017）.dta"
 keep if _merge == 3| _merge == 1
 drop _merge
 order peerid, before(Pgrade)
 sort id 
-save "D:\lsq\CCAP_CAU_student\dtanew\FINALP（2017）.dta",replace
+save "D:\dtanew\FINALP（2017）.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\finalS（2018）.dta",clear
+use "D:\dtanew\finalS（2018）.dta",clear
 keep id mainteacher grade height heightnew weight weightnew mathscore chinesescore esteem1 esteem2 dep1 depress1 sde1 sdn1 sdo1 sdg1 sdv1 grit1 g1 g1_c g2 g2_c g3 g3_c g4 g4_c g5 g5_c g6a g6b g6c g7 g7_c g7_c1 g8 g8_c g9 g9_c g10 g10_c g38 g38_c g39 g39_c g40 g40_c g41 g41_c g42 g42_c g43 g43_c g11 g11_c g12 g12_c g13 g13_c g14 g14_c g15 g15_c g16 g16_c g17 g17_c g18 g18_c g19 g19_c g20 g20_c g21 g21_c g22 g22_c g23 g23_c g24a g24anew g24 g24new g25 g25new g26 g26_c g26a g26a_c g27 g27_c g28 g28_c g29 g29_c g30 g30_c g31 g32 g33 g34 g34_c g35 g35_c g36 g36_c g37 g37_c g44 g44_c g45 g45_c g46 g46_c g47 g47_c g48 g48_c g49 g49_c g50_c g51_c g7_c2 school s1 s1_c s3 s4 s4_c s5 s7 s7_c s9 s9_c s11 s11_c s13 s13_c s18 s19 s20 s21 s22 s22_c s22a s23 s23_c  
 foreach v of varlist _all {
 rename `v' P`v'
 }
 rename Pid peerid, replace
-save "D:\lsq\CCAP_CAU_student\dtanew\PfinalS（2018）.dta",replace 
+save "D:\dtanew\PfinalS（2018）.dta",replace 
 
-use "D:\lsq\CCAP_CAU_student\dtanew\finalS（2018）.dta",clear
+use "D:\dtanew\finalS（2018）.dta",clear
 rename g33_c peerid, replace
-merge m:1 peerid using "D:\lsq\CCAP_CAU_student\dtanew\PfinalS（2018）.dta"
+merge m:1 peerid using "D:\dtanew\PfinalS（2018）.dta"
 keep if _merge == 3| _merge == 1
 drop _merge
 order peerid, before(Pgrade)
 sort id 
-save "D:\lsq\CCAP_CAU_student\dtanew\FINALP（2018）.dta",replace
+save "D:\dtanew\FINALP（2018）.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\FINALP（2018）.dta",clear 
-append using "D:\lsq\CCAP_CAU_student\dtanew\FINALP（2017）.dta",force
+use "D:\dtanew\FINALP（2018）.dta",clear 
+append using "D:\dtanew\FINALP（2017）.dta",force
 sort id year
 order id year
 ssc install center
 center face_m face_f Pface_m Pface_f , prefix(z_) standardize //standardize the appearance score
-save "D:\lsq\CCAP_CAU_student\dtanew\FINAL.dta",replace
 
 **form the usable panel data
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL.dta",clear 
 duplicates report id //14650 obs
 bys id : gen n=_N
 keep if n>=2
 drop n
 tostring id, gen(idn) 
-save "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel).dta",replace
 
 **calculate household assets
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel).dta",clear
 foreach var of varlist g15_c g16_c g21_c g17_c g18_c Pg15_c Pg16_c Pg21_c Pg17_c Pg18_c {
 replace `var'=0 if `var'==.
 }
@@ -3187,24 +3049,24 @@ label var lasset "Log asset"
 gen Passet=Pg15_c*4243+Pg16_c*400+Pg21_c*1460+Pg17_c*3175+Pg18_c*4164 
 gen Plasset=log(Passet+1)  
 label var Plasset "Peers' Log asset"
-save "D:\lsq\CCAP_CAU_student\dtanew\asset(panel).dta",replace
+save "D:\dtanew\asset(panel).dta",replace
 
 **import teachers' supplemental data
-use "D:\lsq\CCAP_CAU_student\dtanew\asset(panel).dta",clear
+use "D:\dtanew\asset(panel).dta",clear
 gen id_class=substr(idn,1,6)
-merge n:n id_class using "D:\lsq\CCAP_CAU_student\dtanew\banzhuren.dta"
+merge n:n id_class using "D:\dtanew\banzhuren.dta"
 drop if _merge==2
 drop _merge
 keep if year==2017
-save "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_ban2017.dta",replace
+save "D:\dtanew\FINAL(panel)_ban2017.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_ban.dta",clear
+use "D:\dtanew\FINAL(panel)_ban.dta",clear
 keep if year==2018
-merge n:n id using "D:\lsq\CCAP_CAU_student\dtanew\chinesetea.dta"
+merge n:n id using "D:\dtanew\chinesetea.dta"
 drop if _merge==2
 drop _merge
-append using "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_ban2017.dta"
-save "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_chi.dta",replace
+append using "D:\dtanew\FINAL(panel)_ban2017.dta"
+save "D:\dtanew\FINAL(panel)_chi.dta",replace
 
 **import reasons of peer selection data
 use "D:\lsq\CCAP_CAU_student\dta\student-2.dta",clear
@@ -3285,10 +3147,10 @@ replace s42_c9=1 if strmatch(s42a, "*合得来*")
 replace s42_c9=1 if strmatch(s42a, "*游戏*")
 replace s42_c9=0 if s42_c9!=1
 label var s42_c9 "hobbies"
-save "D:\lsq\CCAP_CAU_student\dtanew\whypeer.dta",replace
+save "D:\dtanew\whypeer.dta",replace
 
-use "D:\lsq\CCAP_CAU_student\dtaft\FINAL(panel)_all.dta",clear
-merge n:n id using "D:\lsq\CCAP_CAU_student\dtanew\whypeer.dta"
+use "D:\dtaft\FINAL(panel)_all.dta",clear
+merge n:n id using "D:\dtanew\whypeer.dta"
 drop if _merge==2
 drop _merge
 
@@ -3342,75 +3204,204 @@ replace t19=8 if id_class=="446141"
 list id_class if t19==17
 count if id_class=="442141"
 replace t19=7 if id_class=="442141"
-save "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_all.dta",replace
+save "D:\dtanew\FINAL(panel)_all.dta",replace
 
 **create the peer selection feature data set
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_all.dta" ,clear
+use "D:\dtanew\FINAL(panel)_all.dta" ,clear
 duplicates tag peerid, generate(peernum)
 replace peernum=. if peernum==2122
 keep peerid peernum
-save "D:\lsq\CCAP_CAU_student\dtanew\peernum.dta" ,replace
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel).dta" ,clear
+save "D:\dtanew\peernum.dta" ,replace
+use "D:\dtanew\FINAL(panel).dta" ,clear
 duplicates drop peerid,force
 keep peerid Pgrade Pmainteacher Pheight Pweight Pweightnew Pmathscore Pesteem1 Pesteem2 Pgrit1 Pdep1 Pdepress1 Psde1 Psdn1 Psdo1 Psdg1 Psdv1 Pg1 Pg1_c Pg2 Pg2_c Pg3 Pg3_c Pg4 Pg4_c Pg5 Pg5_c Pg6a Pg6b Pg6c Pg7 Pg7_c Pg7_c1 Pg8 Pg8_c Pg9 Pg9_c Pg10 Pg10_c Pg38 Pg38_c Pg39 Pg39_c Pg40 Pg40_c Pg41 Pg41_c Pg42 Pg42_c Pg43 Pg43_c Pg11 Pg11_c Pg12 Pg12_c Pg13 Pg13_c Pg14 Pg14_c Pg15 Pg15_c Pg16 Pg16_c Pg17 Pg17_c Pg18 Pg18_c Pg19 Pg19_c Pg20 Pg20_c Pg21 Pg21_c Pg22 Pg22_c Pg23 Pg23_c Pg24a Pg24anew Pg24 Pg24new Pg25 Pg25new Pg26 Pg26_c Pg26a Pg26a_c Pg27 Pg27_c Pg28 Pg28_c Pg29 Pg29_c Pg30 Pg30_c Pg31 Pg32 Pg33 Pg34 Pg34_c Pg35 Pg35_c Pg36 Pg36_c Pg37 Pg37_c Pg44 Pg44_c Pg45 Pg45_c Pg46 Pg46_c Pg47 Pg47_c Pg48 Pg48_c Pg49 Pg49_c Pface_m Pface_f 
-merge 1:n peerid using"D:\lsq\CCAP_CAU_student\dtanew\peernum.dta"
+merge 1:n peerid using"D:\dtanew\peernum.dta"
 drop _merge
 order peernum, before(peerid)
-save "D:\lsq\CCAP_CAU_student\dtanew\Pchoice.dta",replace 
+save "D:\dtanew\Pchoice.dta",replace 
 
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel).dta",clear //if two years peer is the same person
+use "D:\dtanew\FINAL(panel).dta",clear //if two years peer is the same person
 keep if year==2017
 keep id name peerid
 gen peer1=peerid
 drop if peer1==.
-save "D:\lsq\CCAP_CAU_student\dtanew\peervary(2017).dta",replace
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel).dta",clear 
+save "D:\dtanew\peervary(2017).dta",replace
+use "D:\dtanew\FINAL(panel).dta",clear 
 keep if year==2018
 keep id name peerid
 gen peer2=peerid
 drop if peer2==.
-save "D:\lsq\CCAP_CAU_student\peervary(2018).dta",replace
-use "D:\lsq\CCAP_CAU_student\dtanew\peervary(2018).dta",clear
-merge 1:1 id using "D:\lsq\CCAP_CAU_student\dtanew\peervary(2017).dta"
+save "D:\peervary(2018).dta",replace
+use "D:\dtanew\peervary(2018).dta",clear
+merge 1:1 id using "D:\dtanew\peervary(2017).dta"
 drop _merge
 gen peervary=1 if peer1!=peer2
 replace peervary=0 if peer1==peer2
 tab peervary //1317 chidren with the unchanged peer
-save "D:\lsq\CCAP_CAU_student\dtanew\peervary.dta",replace
+save "D:\dtanew\peervary.dta",replace
 
 **descriptive statistical
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_all.dta",clear
+use "D:\dtanew\FINAL(panel)_all.dta",clear
 replace pro=3 if id==34613137  //migrant
 keep pro year s1 s1_c s4 s4_c s19 s20 s21 s22 s22_c s22a s7_t s9_t s11_t s13_t t2 t3 t5 t7 t8_c1 t9 t9_c t10 t10_c t11 t11_c t16 t16_c c181 c181_c c182 c182_c c183 c183_c c184 c184_c c185 c185_c c186 c186_c c187 c187_c c188 c188_c c189 c189_c c190 c190_c c191 c191_c c192 c192_c c193 c193_c c194 c194_c c195 c195_c c196 c196_c c197 c197_c c198_c1 c199 c199_c c199_c1 c200 c200_c c200_c1 c201 c201_c c201_c1 c202 c202_c c2 c3 c5 c7 c8_c1 c9 c9_c c11 c11_c c17 c17_c c18 c18_c c19 c19_c c20 c20_c c21 c21_c c22 c22_c m2 m3 m5 m7 m8_c1 m9 m9_c m11 m11_c m17 m17_c m18 m18_c m19 m19_c m20 m20_c m21 m21_c m22 m22_c m203 m203_c m204 m204_c m205 m205_c m206 m206_c m207 m207_c m208 m208_c m209 m209_c m210 m210_c m211 m211_c m212 m212_c m213 m213_c m214 m214_c m215 m215_c m216 m216_c m217 m217_c m218 m218_c m219 m219_c m220 m220_c m220_c1 m221 m221_c m221_c1 m222 m222_c m222_c1 m223 m223_c m223_c1 m224 m224_c
 keep if pro==1| pro==2
 set matsize 800
-outreg2 using "D:\lsq\1.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
+outreg2 using "D:\1.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
 replace t3=. if t3==2
-outreg2 using "D:\lsq\ban.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
-outreg2 using "D:\lsq\math.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
-outreg2 using "D:\lsq\chinese.doc",replace sum(log) keep( c2 c3 c5 c7 c8_c1 c9_c c11_c c17_c c18_c c19_c c20_c c21_c c22_c c181_c c183_c c184_c c185_c c188_c c189_c c190_c c191_c c192_c c193_c c194_c c195_c c196_c c197_c c198_c1 c199_c1 c200_c1 c201_c1 c202_c ) title(mig)
+outreg2 using "D:\ban.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
+outreg2 using "D:\math.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
+outreg2 using "D:\chinese.doc",replace sum(log) keep( c2 c3 c5 c7 c8_c1 c9_c c11_c c17_c c18_c c19_c c20_c c21_c c22_c c181_c c183_c c184_c c185_c c188_c c189_c c190_c c191_c c192_c c193_c c194_c c195_c c196_c c197_c c198_c1 c199_c1 c200_c1 c201_c1 c202_c ) title(mig)
 
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_all.dta",clear
+use "D:\dtanew\FINAL(panel)_all.dta",clear
 replace pro=3 if id==34613137 //rural
 winsor m7, gen(m7_c) p(0.01)
 keep pro year s1 s1_c s4 s4_c s19 s20 s21 s22 s22_c s22a s7_t s9_t s11_t s13_t t2 t3 t5 t7 t8_c1 t9 t9_c t10 t10_c t11 t11_c t16 t16_c c181 c181_c c182 c182_c c183 c183_c c184 c184_c c185 c185_c c186 c186_c c187 c187_c c188 c188_c c189 c189_c c190 c190_c c191 c191_c c192 c192_c c193 c193_c c194 c194_c c195 c195_c c196 c196_c c197 c197_c c198_c1 c199 c199_c c199_c1 c200 c200_c c200_c1 c201 c201_c c201_c1 c202 c202_c c2 c3 c5 c7 c8_c1 c9 c9_c c11 c11_c c17 c17_c c18 c18_c c19 c19_c c20 c20_c c21 c21_c c22 c22_c m2 m3 m5 m7 m8_c1 m9 m9_c m11 m11_c m17 m17_c m18 m18_c m19 m19_c m20 m20_c m21 m21_c m22 m22_c m203 m203_c m204 m204_c m205 m205_c m206 m206_c m207 m207_c m208 m208_c m209 m209_c m210 m210_c m211 m211_c m212 m212_c m213 m213_c m214 m214_c m215 m215_c m216 m216_c m217 m217_c m218 m218_c m219 m219_c m220 m220_c m220_c1 m221 m221_c m221_c1 m222 m222_c m222_c1 m223 m223_c m223_c1 m224 m224_c
 keep if pro==3| pro==4 
 set matsize 800
-outreg2 using "D:\lsq\2.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
+outreg2 using "D:\2.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
 replace t3=. if t3==2 
-outreg2 using "D:\lsq\ban2.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
-outreg2 using "D:\lsq\math2.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
+outreg2 using "D:\ban2.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
+outreg2 using "D:\math2.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
 
-use "D:\lsq\CCAP_CAU_student\dtanew\FINAL(panel)_all.dta",clear
+use "D:\dtanew\FINAL(panel)_all.dta",clear
 replace pro=3 if id==34613137 //compare with individuals
 keep pro year s1 s1_c s4 s4_c s19 s20 s21 s22 s22_c s22a s7_t s9_t s11_t s13_t t2 t3 t5 t7 t8_c1 t9 t9_c t10 t10_c t11 t11_c t16 t16_c c181 c181_c c182 c182_c c183 c183_c c184 c184_c c185 c185_c c186 c186_c c187 c187_c c188 c188_c c189 c189_c c190 c190_c c191 c191_c c192 c192_c c193 c193_c c194 c194_c c195 c195_c c196 c196_c c197 c197_c c198_c1 c199 c199_c c199_c1 c200 c200_c c200_c1 c201 c201_c c201_c1 c202 c202_c c2 c3 c5 c7 c8_c1 c9 c9_c c11 c11_c c17 c17_c c18 c18_c c19 c19_c c20 c20_c c21 c21_c c22 c22_c m2 m3 m5 m7 m8_c1 m9 m9_c m11 m11_c m17 m17_c m18 m18_c m19 m19_c m20 m20_c m21 m21_c m22 m22_c m203 m203_c m204 m204_c m205 m205_c m206 m206_c m207 m207_c m208 m208_c m209 m209_c m210 m210_c m211 m211_c m212 m212_c m213 m213_c m214 m214_c m215 m215_c m216 m216_c m217 m217_c m218 m218_c m219 m219_c m220 m220_c m220_c1 m221 m221_c m221_c1 m222 m222_c m222_c1 m223 m223_c m223_c1 m224 m224_c
 set matsize 800
-outreg2 using "D:\lsq\0.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
-outreg2 using "D:\lsq\ban0.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
-outreg2 using "D:\lsq\math0.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
-outreg2 using "D:\lsq\chinese0.doc",replace sum(log) keep( c2 c3 c5 c7 c8_c1 c9_c c11_c c17_c c18_c c19_c c20_c c21_c c22_c c181_c c183_c c184_c c185_c c188_c c189_c c190_c c191_c c192_c c193_c c194_c c195_c c196_c c197_c c198_c1 c199_c1 c200_c1 c201_c1 c202_c ) title(mig)
+outreg2 using "D:\0.doc",replace sum(log) keep(s1_c s4_c s19 s20 s21 s22_c s7_t s9_t s11_t s13_t) title(mig)
+outreg2 using "D:\ban0.doc",replace sum(log) keep(t2 t3 t5 t7 t8_c1 t9_c t10_c t11_c t16_c) title(mig)
+outreg2 using "D:\math0.doc",replace sum(log) keep( m2 m3 m5 m7 m8_c1 m9_c m11_c m17_c m18_c m19_c m20_c m21_c m22_c m203_c m205_c m206_c m207_c m210_c m211_c m212_c m213_c m214_c m215_c m216_c m217_c m218_c m219_c m220_c1 m221_c1 m222_c1 m223_c1 m224_c ) title(mig)
+outreg2 using "D:\chinese0.doc",replace sum(log) keep( c2 c3 c5 c7 c8_c1 c9_c c11_c c17_c c18_c c19_c c20_c c21_c c22_c c181_c c183_c c184_c c185_c c188_c c189_c c190_c c191_c c192_c c193_c c194_c c195_c c196_c c197_c c198_c1 c199_c1 c200_c1 c201_c1 c202_c ) title(mig)
 
 histogram mathscore,bin(10) norm 
 tw (kdensity math ) (kdensity chinese ) (kdensity english), legend(label(1 "math") label(2 "chinese") label(3 "english") col(3))
 kdensity mathscore , normal
 tw (kdensity mathscore if grade==3 ) (kdensity mathscore if grade==4 ), legend(label(1 "3rd") label(2 "4th") col(2))
+
+
+// 2.Topic: The Value-at-Risk of Japanese Yen Exchange Rate Volatility Based on The EGARCH Model 
+
+** test for stationary 
+use "D:\time seires\paper_raw.dta",clear
+tsline d_ler
+dfuller ler, lag(1)
+pperron ler ,regress //test stationary of ler-nonstationary
+dfgls d_ler, maxlag(12)
+pperron d_ler ,regress //test stationary of d_ler-stationary
+
+** test for conditional heteroskedasticity
+arima d_ler, arima(1,0,0) nolog
+predict e_hat,resid 
+reg e_hat
+estat archlm
+gen e2=e_hat*e_hat
+wntestq e2
+
+** skewness, kurtosis
+sktest d_ler //not normal dis
+sum d_ler, detail //skewness=-0.467; kurtosis=4.185-left fat tail
+
+**graph
+twoway(tsline ler, yaxis(1)) (tsline d_ler, yaxis(2))
+
+** mean equation(AR1+x)
+ac d_ler //(AR1)
+pac d_ler 
+arima d_ler, arima(1,0,0) nolog //best
+estat ic
+arima d_ler, arima(1,0,1) nolog
+estat ic
+drop time_c
+save "D:\time seires\paper_exchange rate.dta"
+
+**add interest rate: 10-year interest rate
+use "D:\time seires\paper_interest rate1.dta",clear
+gen time = date( var1,"YMD")
+format time %tddmy
+tsset time
+sort us_interest time
+sort jp_interest time
+gen in_dif=us_interest- jp_interest
+gen time_c = _n
+tsset time_c
+gen d_in_dif = d.in_dif
+merge 1:1 time using "D:\lsq\nyu\time seires\paper_exchange rate.dta"
+keep if _merge==3
+drop _merge time_c
+gen time_c = _n
+tsset time_c
+save "D:\time seires\paper_final.dta"
+
+** select p q and error distribution of EGARCH+GARCH
+arch ler,het(in_dif) arima(1,1,0) arch(1) egarch(1) nolog 
+est store egarchn
+arch d_ler,het(in_dif) arima(1,0,0) arch(1) egarch(1) distribution(t) //better
+est store egarcht
+esttab egarchn egarcht, mtitle scalar(ll aic bic)
+
+**VAR-causality effect
+use "D:\time seires\paper_final.dta",clear
+replace d_in_dif=0 if d_in_dif==.
+tsline in_dif
+dfgls in_dif, maxlag(12) //nonstarionary
+pperron in_dif ,regress //test stationary of interest rate
+dfgls d_in_dif, maxlag(12) //starionary
+pperron d_in_dif ,regress //test stationary of d_interest rate
+
+**test for cointegration
+vecrank ler in_dif //johansen test
+reg ler in_dif
+predict e_hat,resid
+dfuller e_hat
+ssc install egranger
+egranger in_dif ler 
+egranger ler in_dif //not cointegrated
+
+** short term relationship
+varsoc d_ler d_in_dif 
+var d_ler d_in_dif, lag(3)
+vargranger // cause-add this term in grach 
+
+**SVAR
+matrix A1 = (1,0 \ .,1)
+matrix B1 = (.,0 \ 0,.)
+matrix list A1
+matrix list B1
+svar d_in_dif d_ler, lags(1/2) aeq(A1) beq(B1) 
+matrix Aest=e(A)
+matrix Best=e(B)
+matrix chol_var=inv(Aest)*Best
+matrix list chol_var //1 unit change in the interest rate differential causes 0.87% change in the exchange rate
+  
+**VAR to forecast d_in
+use "D:\time seires\paper_final.dta",clear
+var d_ler d_in_dif, lag(1/2)
+varfcast compute, dynamic(398) step(10)
+keep time time_c d_in_dif_f
+rename d_in_dif_f d_in_dif
+keep if time==.
+save "D:\time seires\paper_var.dta"
+
+use "D:\time seires\paper_final.dta",clear
+append using "D:\time seires\paper_var.dta",force
+save "D:\time seires\paper_finalver.dta"
+
+**predict(arch d_ler, arima(1,0,0) arch(1) egarch(1) )
+use "D:\time seires\paper_finalver.dta", clear
+arch d_ler, arima(1,0,0) arch(1) egarch(1) 
+predict ht2, variance dynamic(398) //ht
+
+**model check
+arch d_ler,het(in_dif) arima(1,0,0) arch(1) egarch(1) distribution(t)
+predict new, y dynamic(410)
+
+**calculate VaR 
+gen VaR_up2=1.65*sqrt(ht2)
+gen VaR_down2=-1.65*sqrt(ht2)
+tsline VaR_up VaR_down d_ler f_d_ler, xline(300)
+
+**forecast
+forecast create garch
+estimates store fd_ler
+forecast estimates fd_ler
+forecast solve, begin(398) prefix(_f)
+gen fd_ler=_fd_ler if time_c>=300

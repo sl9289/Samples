@@ -1,8 +1,7 @@
 /* Topic: Data Cleaning and Textual Analysis
-   Editor: Siqi Li
 */
   
-global loc "/Users/siqili/Downloads"
+global loc "/Users/Downloads"
 global nyt "$loc/NYT"
 
 import excel "$nyt/NYT Data", sheet("Sheet1") clear
